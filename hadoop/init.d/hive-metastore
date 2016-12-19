@@ -1,28 +1,12 @@
 #!/bin/bash
-#
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements.  See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0
-# (the "License"); you may not use this file except in compliance with
-# the License.  You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# Starts a Hive Server2
+# Starts a Hive Metastore
 #
 # chkconfig: 345 85 15
-# description: Hive Server2
+# description: Hive Metastore
 #
 ### BEGIN INIT INFO
-# Provides:          hive-server2
-# Short-Description: Hive Server2
+# Provides:          hive-metastore
+# Short-Description: Hive Metastore
 # Default-Start:     3 4 5
 # Default-Stop:      0 1 2 6
 # Required-Start:    $syslog $remote_fs
@@ -31,16 +15,14 @@
 # Should-Stop:
 ### END INIT INFO
 
-service=`cat /etc/default/services | grep Hive-Server2`
+service=`cat /etc/default/services | grep Hive-Metastore`
 if [ -z "$service" ];then
 	exit 1
 fi
 . /lib/lsb/init-functions
 BIGTOP_DEFAULTS_DIR=${BIGTOP_DEFAULTS_DIR-/etc/default}
 [ -n "${BIGTOP_DEFAULTS_DIR}" -a -r ${BIGTOP_DEFAULTS_DIR}/hadoop ] && . ${BIGTOP_DEFAULTS_DIR}/hadoop
-[ -n "${BIGTOP_DEFAULTS_DIR}" -a -r ${BIGTOP_DEFAULTS_DIR}/hive-server2 ] && . ${BIGTOP_DEFAULTS_DIR}/hive-server2
 
-# Autodetect JAVA_HOME if not defined
 . /usr/lib/bigtop-utils/bigtop-detect-javahome
 
 RETVAL_SUCCESS=0
@@ -51,7 +33,6 @@ STATUS_DEAD_AND_LOCK=2
 STATUS_NOT_RUNNING=3
 STATUS_OTHER_ERROR=102
 
-
 ERROR_PROGRAM_NOT_INSTALLED=5
 ERROR_PROGRAM_NOT_CONFIGURED=6
 
@@ -60,23 +41,22 @@ RETVAL=0
 SLEEP_TIME=5
 PROC_NAME="java"
 
-DAEMON="hive-server2"
-DESC="Hive Server2"
+DAEMON="hive-metastore"
+DESC="Hive Metastore"
 HIVE_HOME="/home/hadoop/hive"
 EXEC_PATH="$HIVE_HOME/bin/hive"
 EXEC_DIR=""
 SVC_USER="hadoop"
 DAEMON_FLAGS=""
 CONF_DIR="$HIVE_HOME/conf"
-PIDFILE="/var/run/hive/hive-server2.pid"
+PIDFILE="/var/run/hive/hive-metastore.pid"
 LOCKDIR="/var/lock/subsys"
-LOCKFILE="$LOCKDIR/hive-server2"
-WORKING_DIR="/var/lib/hive"
-
-install -d -m 0755 -o hadoop -g hadoop /var/run/hive 1>/dev/null 2>&1 || :
-[ -d "$LOCKDIR" ] || install -d -m 0755 $LOCKDIR 1>/dev/null 2>&1 || :
+LOCKFILE="$LOCKDIR/hive-metastore"
+mkdir -p /var/run/hive
+mkdir -p /var/log/hive
+chown $SVC_USER:$SVC_USER /var/log/hive
+chown $SVC_USER:$SVC_USER /var/run/hive
 start() {
-    [ -x $EXE_FILE ] || exit $ERROR_PROGRAM_NOT_INSTALLED
     log_success_msg "Starting $DESC (${DAEMON}): "
 
     checkstatusofproc
@@ -90,9 +70,8 @@ start() {
 
     exec_env="HADOOP_OPTS=\"-Dhive.log.dir=`dirname $LOG_FILE` -Dhive.log.file=${DAEMON}.log -Dhive.log.threshold=INFO\""
 
-cd /data
     su -s /bin/bash $SVC_USER -c "$exec_env nohup nice -n 0 \
-        $EXEC_PATH --service hiveserver2 $PORT \
+        $EXEC_PATH --service metastore $PORT \
             > $LOG_FILE 2>&1 < /dev/null & "'echo $! '"> $PIDFILE"
     sleep 3
 
