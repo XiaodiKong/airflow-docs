@@ -1,0 +1,129 @@
+#!/bin/bash
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#       /etc/rc.d/init.d/airflowserver
+#
+#       AirFlow WebServer
+#
+# chkconfig: 2345 90 10
+# description: AirFlow WebServer
+# pidfile: /var/run/airflow/airflow.pid
+
+service=`cat /etc/default/services | grep AirflowScheduler`
+if [ -z "$service" ];then
+	exit 1
+fi
+. /etc/init.d/functions
+source /root/.bashrc
+LOCKFILE=/var/lock/subsys/airflow-scheduler
+LOGDIR=/var/log/airflow  # Log directory to use
+PIDFILE=/var/run/airflow/airflow-scheduler.pid
+USER=root
+AIRFLOW_SHUTDOWN_TIMEOUT=15
+PYENV_PATH=/root/.pyenv/plugins/pyenv-virtualenv/shims:/root/.pyenv/shims:/root/.pyenv/bin:/root/.pyenv/plugins/pyenv-virtualenv/shims:/root/.pyenv/shims:/root/.pyenv/bin:/root/.pyenv/shims:/root/.pyenv/bin:/root/.pyenv/plugins/pyenv-virtualenv/shims:/root/.pyenv/shims:/root/.pyenv/bin:/root/.pyenv/plugins/pyenv-virtualenv/shims:/root/.pyenv/shims:/root/.pyenv/bin
+PATH=$PATH:$PYENV_PATH
+
+DEAMON="airflow scheduler"
+DEAMON_OPTS="--stdout $LOGDIR/airflow_scheduler.log --stderr $LOGDIR/airflow_scheduler.out --pid $PIDFILE -D"
+
+airflow_start() {
+        echo -n "Starting airflow-scheduler: "
+        for dir in $(dirname $PIDFILE) $LOGDIR
+        do
+            mkdir -p $dir
+            chown -R $USER $dir
+        done
+
+        # Check if already running
+        if [ -e $PIDFILE ] && checkpid $(cat $PIDFILE) ; then
+            echo "already running"
+            return 0
+        fi
+
+        # the supervisor itself will setuid down to $USER
+        #su -p $USER -c "airflow scheduler &"
+	su -p $USER -c "$DEAMON $DEAMON_OPTS"
+	sleep 3
+	pid=`cat $PIDFILE`
+        ret=$?
+        base=$(basename $0)
+        if [ $ret -eq 0 ]; then
+            sleep 2
+            test -e $PIDFILE && checkpid $(cat $PIDFILE)
+            ret=$?
+        fi
+        if [ $ret -eq 0 ]; then
+            touch $LOCKFILE
+            success $"$base startup"
+        else
+            failure $"$base startup"
+        fi
+        echo
+        return $ret
+}
+
+airflow_stop() {
+        if [ ! -e $PIDFILE ]; then
+            success "Airflow-scheduler is not running"
+            return 0
+        fi
+
+        echo -n "Shutting down airflow scheduler: "
+
+        AFWS_PID=`cat $PIDFILE 2>/dev/null`
+        if [ -n "$AFWS_PID" ]; then
+          kill -TERM ${AFWS_PID} &>/dev/null
+          for i in `seq 1 ${AIRFLOW_SHUTDOWN_TIMEOUT}` ; do
+            kill -0 ${AFWS_PID} &>/dev/null || break
+            sleep 1
+          done
+          kill -KILL ${AFWS_PID} &>/dev/null
+        fi
+        echo
+        rm -f $LOCKFILE $PIDFILE
+	status -p $PIDFILE supervisor
+        return 0
+}
+
+airflow_restart() {
+  airflow_stop
+  airflow_start
+}
+
+case "$1" in
+    start)
+        airflow_start
+        ;;
+    stop)
+        airflow_stop
+        ;;
+    status)
+        status -p $PIDFILE supervisor
+        ;;
+    restart|reload)
+        airflow_restart
+        ;;
+    condrestart)
+        [ -f $LOCKFILE ] && restart || :
+        ;;
+    *)
+        echo "Usage: airflow-scheduler {start|stop|status|restart}"
+        exit 1
+        ;;
+esac
+exit $?
+
